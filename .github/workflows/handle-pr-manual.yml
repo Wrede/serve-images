@@ -1,0 +1,96 @@
+name: Handle PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      serveImageName:
+        description: 'The serve image to build and publish'
+        required: true
+        default: 'serve-jupyterlab'
+        type: choice
+        options:
+        - serve-jupyterlab
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+        type: choice
+        options:
+        - info
+        - warning
+        - debug
+      tags:
+        description: 'Manual run'
+        required: false
+        type: boolean
+ 
+jobs:
+  build-and-test:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Branch or tag that triggered the workflow run
+        run: echo running on branch ${GITHUB_REF##*/}
+
+      - name: The selected serve image
+        run: echo selected serve image is ${{ github.event.inputs.serveImageName }}
+
+      - name: Checkout branch pr-dev
+        uses: actions/checkout@main
+        with:
+          ref: 'pr-dev'
+
+      - name: Build test image
+        run: |
+            docker build -t test-image -f ./${{ github.event.inputs.serveImageName }}/Dockerfile.test ./${{ github.event.inputs.serveImageName }}
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.7.1
+        with:
+          image-ref: 'test-image'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          security-checks: 'vuln'
+          timeout: '30m0s'
+          exit-code: '1'
+
+      - name: Run tests
+        env:
+          IMAGE_NAME: test-image
+        run: | 
+          pip install -r ./${{ github.event.inputs.serveImageName }}/tests/requirements.txt
+          python3 -m pytest ./${{ github.event.inputs.serveImageName }}
+
+  push: 
+    if: | 
+      github.repository == 'scilifelabdatacentre/serve-images'
+    needs: build-and-test
+    runs-on: ubuntu-20.04
+    concurrency:
+      group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+      - name: Checkout github action
+        uses: actions/checkout@main
+        with:
+          ref: 'pr-dev'
+
+      - name: Login to GHCR
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+
+      - name: Publish image to GHCR
+        uses: docker/build-push-action@v3
+        with:
+          file: ./${{ github.event.inputs.serveImageName }}/Dockerfile
+          context: ./${{ github.event.inputs.serveImageName }}
+          push: true
+          build-args: version=${{ github.ref_name }}
+          tags: |
+            ghcr.io/scilifelabdatacentre/${{ github.event.inputs.serveImageName }}:pr-dev
