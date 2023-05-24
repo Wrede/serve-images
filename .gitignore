@@ -1,7 +1,10 @@
 .Dockerfile.swp
-venv/
 .pytest_cache
 __pycache__
 
 #VScode settings
 .vscode/*
+
+#venv
+.venv/
+venv/
