@@ -1,5 +1,7 @@
 FROM jupyter/minimal-notebook:latest
-LABEL org.opencontainers.image.source https://github.com/scilifelabdatacentre/serve-images
+LABEL org.opencontainers.image.source https://github.com/Wrede/serve-images.git \
+      org.opencontainers.image.version v0.2.0 \
+      org.opencontainers.artifact.description jupyter-lab for studio release/v0.7.0
 
 ARG STACKN_BRANCH=release/v0.7.0
 ARG CLI_BRANCH=develop
